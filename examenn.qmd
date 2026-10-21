@@ -1,0 +1,113 @@
+---
+title: "EXAMEN"
+author: "Michael Sanchez Carrion"
+format: html
+editor: visual
+---
+## PAQUETES 
+
+```{r}
+paquetes <- c("googlesheets4", "agricolae", "ggplot2", "dplyr", "readr")
+nuevos_paquetes <- paquetes[!(paquetes %in% installed.packages()[,"Package"])]
+if(length(nuevos_paquetes)) install.packages(nuevos_paquetes)
+
+library(googlesheets4)
+library(agricolae)
+library(ggplot2)
+library(dplyr)
+library(readr)
+```
+
+
+## DATOS
+
+```{r}
+url_sheet <- "[https://docs.google.com/spreadsheets/d/1LVnWoDJBeBvUv7nFfxwrUBfe_PvKVAzrVWY-9fU3IKQ/edit?usp=sharing](https://docs.google.com/spreadsheets/d/1LVnWoDJBeBvUv7nFfxwrUBfe_PvKVAzrVWY-9fU3IKQ/edit?usp=sharing)"
+df_raw <- read_sheet(url_sheet, sheet = "fb")
+
+```
+
+## PROMEDIO
+
+```{r}
+df_dbca <- df_raw %>%
+  mutate(b = as.numeric(gsub(",", ".", b))) %>%
+  group_by(tratamiento, bloque) %>%
+  summarise(b = mean(b, na.rm = TRUE), .groups = "drop") %>%
+  mutate(
+    tratamiento = factor(tratamiento),
+    bloque      = factor(bloque)
+  )
+```
+
+## MODELO Y ANOVA
+
+```{r}
+modelo <- aov(b ~ bloque + tratamiento, data = df_dbca)
+summary(modelo)
+```
+
+## COEFICIENTE DE VARIACION
+
+```{r}
+cm_error <- summary(modelo)[[1]]["Residuals", "Mean Sq"]
+media_general <- mean(df_dbca$b)
+cv <- (sqrt(cm_error) / media_general) * 100
+cat(sprintf("\nCoeficiente de Variación (CV): %.2f%%\n", cv))
+```
+
+## COMPARACION DE MEDIAS 
+
+```{r}
+tukey_res <- HSD.test(modelo, "tratamiento", group = TRUE, console = TRUE)
+```
+
+## GRAFICA
+
+```{r}
+df_graph <- tukey_res$groups %>%
+  rename(media = b, grupos = groups) %>%
+  mutate(tratamiento = rownames(.)) %>%
+  inner_join(
+    df_dbca %>% group_by(tratamiento) %>% summarize(sd = sd(b, na.rm = TRUE)),
+    by = "tratamiento"
+  )
+
+ggplot(df_graph, aes(x = tratamiento, y = media, fill = tratamiento)) +
+  geom_bar(stat = "identity", color = "black", width = 0.6, show.legend = FALSE) +
+  geom_errorbar(aes(ymin = media - sd, ymax = media + sd), width = 0.2, color = "gray30") +
+  geom_text(aes(label = grupos, y = media + sd + 0.2), vjust = 0, fontface = "bold", size = 4.5) +
+  labs(
+    title = "Efecto de los Tratamientos sobre la Variable 'b'",
+    subtitle = "Diseño DBCA (Prueba de Tukey, α = 0.05)",
+    x = "Tratamientos",
+    y = "Media de la Variable 'b'"
+  ) +
+  scale_fill_brewer(palette = "Pastel1") +
+  coord_cartesian(ylim = c(0, max(df_graph$media + df_graph$sd) + 1.5)) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5, color = "gray40"),
+    axis.title = element_text(face = "bold"),
+    panel.grid.major.x = element_blank()
+  )
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
